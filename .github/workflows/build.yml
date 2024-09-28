@@ -1,4 +1,4 @@
-name: Build ORB-SLAM3 for Raspberry Pi 3B++
+name: Build ORB-SLAM3 for Raspberry Pi 3B+
 
 on:
   push:
@@ -63,4 +63,4 @@ jobs:
         with:
           name: orb_slam3_binaries
           path: build/
-          retention-days: 7
+          # retention-days: 7
