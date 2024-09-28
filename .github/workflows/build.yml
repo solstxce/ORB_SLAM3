@@ -3,10 +3,10 @@ name: Build ORB-SLAM3 for ARM64 (Raspberry Pi 3B+)
 on:
   push:
     branches:
-      - main
+      - master
   pull_request:
     branches:
-      - main
+      - master
 
 jobs:
   build:
