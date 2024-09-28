@@ -1,4 +1,4 @@
-name: Build ORB-SLAM3 for Raspberry Pi 3B+
+name: Build ORB-SLAM3 for Raspberry Pi 3B++
 
 on:
   push:
