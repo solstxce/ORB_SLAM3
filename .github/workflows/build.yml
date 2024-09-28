@@ -1,0 +1,66 @@
+name: Build ORB-SLAM3 for Raspberry Pi 3B+
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Set up ARM64 cross-compilation
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-aarch64-linux-gnu cmake
+      
+      - name: Create toolchain file
+        run: |
+          cat << EOF > toolchain.cmake
+          set(CMAKE_SYSTEM_NAME Linux)
+          set(CMAKE_SYSTEM_PROCESSOR aarch64)
+          set(CMAKE_C_COMPILER /usr/bin/aarch64-linux-gnu-gcc)
+          set(CMAKE_CXX_COMPILER /usr/bin/aarch64-linux-gnu-g++)
+          EOF
+      
+      - name: Build DBoW2
+        run: |
+          cd Thirdparty/DBoW2
+          cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=../../toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+      
+      - name: Build g2o
+        run: |
+          cd Thirdparty/g2o
+          cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=../../toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+      
+      - name: Build Sophus
+        run: |
+          cd Thirdparty/Sophus
+          cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=../../toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+      
+      - name: Uncompress vocabulary
+        run: |
+          cd Vocabulary
+          tar -xf ORBvoc.txt.tar.gz
+      
+      - name: Build ORB_SLAM3
+        run: |
+          cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel 4
+      
+      - name: Upload binaries
+        uses: actions/upload-artifact@v3
+        with:
+          name: orb_slam3_binaries
+          path: build/
+          retention-days: 7
