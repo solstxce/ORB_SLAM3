@@ -1,12 +1,12 @@
-name: Build ORB-SLAM3 for Raspberry Pi 3B+
+name: Build ORB-SLAM3 for ARM64 (Raspberry Pi 3B+)
 
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
     branches:
-      - master
+      - main
 
 jobs:
   build:
@@ -15,52 +15,80 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-        
-      - name: Set up ARM64 cross-compilation
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y g++-aarch64-linux-gnu cmake
       
-      - name: Create toolchain file
-        run: |
-          cat << EOF > toolchain.cmake
-          set(CMAKE_SYSTEM_NAME Linux)
-          set(CMAKE_SYSTEM_PROCESSOR aarch64)
-          set(CMAKE_C_COMPILER /usr/bin/aarch64-linux-gnu-gcc)
-          set(CMAKE_CXX_COMPILER /usr/bin/aarch64-linux-gnu-g++)
-          EOF
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
       
-      - name: Build DBoW2
-        run: |
-          cd Thirdparty/DBoW2
-          cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=../../toolchain.cmake -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --parallel
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
       
-      - name: Build g2o
-        run: |
-          cd Thirdparty/g2o
-          cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=../../toolchain.cmake -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --parallel
+      - name: Build in ARM64 environment
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/arm64
+          push: false
+          load: true
+          tags: orb-slam3-arm64:latest
       
-      - name: Build Sophus
+      - name: Run build process in container
         run: |
-          cd Thirdparty/Sophus
-          cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=../../toolchain.cmake -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --parallel
-      
-      - name: Uncompress vocabulary
-        run: |
-          cd Vocabulary
-          tar -xf ORBvoc.txt.tar.gz
-      
-      - name: Build ORB_SLAM3
-        run: |
-          cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+          docker run --rm -v ${{ github.workspace }}:/workspace orb-slam3-arm64:latest /bin/bash -c "
+          cd /workspace &&
+          
+          # Install dependencies
+          sudo apt-get update &&
+          sudo apt-get install -y libboost-all-dev libboost-dev libssl-dev libpython2.7-dev libeigen3-dev ninja-build &&
+          
+          # Build Pangolin
+          git clone https://github.com/stevenlovegrove/Pangolin &&
+          cd Pangolin &&
+          ./scripts/install_prerequisites.sh recommended &&
+          cmake -B build -GNinja &&
+          cmake --build build &&
+          cd .. &&
+          
+          # Install OpenCV
+          wget https://github.com/prepkg/opencv-raspberrypi/releases/download/4.6.0/opencv_64.deb &&
+          sudo dpkg -i opencv_64.deb &&
+          
+          # Build ORB-SLAM3 dependencies
+          cd Thirdparty/DBoW2 &&
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release &&
+          cmake --build build --parallel &&
+          cd ../g2o &&
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release &&
+          cmake --build build --parallel &&
+          cd ../Sophus &&
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release &&
+          cmake --build build --parallel &&
+          cd ../.. &&
+          
+          # Uncompress vocabulary
+          cd Vocabulary &&
+          tar -xf ORBvoc.txt.tar.gz &&
+          cd .. &&
+          
+          # Build ORB-SLAM3
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release &&
           cmake --build build --parallel 4
+          "
       
-      - name: Upload binaries
+      - name: Extract pypangolin wheel
+        run: |
+          docker cp $(docker ps -lq):/workspace/Pangolin/build/unknown-unknown.whl ./pypangolin-0.9.2-py3-none-any.whl.whl
+      
+      - name: Upload ORB-SLAM3 binaries
         uses: actions/upload-artifact@v3
         with:
           name: orb_slam3_binaries
           path: build/
-          # retention-days: 7
+          retention-days: 7
+      
+      - name: Upload pypangolin wheel
+        uses: actions/upload-artifact@v3
+        with:
+          name: pypangolin_wheel
+          path: pypangolin-0.9.2-py3-none-any.whl
+          retention-days: 7
